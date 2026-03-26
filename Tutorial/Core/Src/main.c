@@ -87,7 +87,12 @@ int _write(int file, char *ptr, int len){
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stdio.h"
+#include "math.h"
 #include "stm32f4xx_hal.h"
+
+#define R25   10000.0f
+#define T25   298.15f
+#define BETA  3900.0f
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -129,7 +134,14 @@ static void MX_USART2_UART_Init(void);
   static int contadorRight = 0;
   static int pulsado = 0;
   static int pulsadoLeft = 0;
+  static int valorAlarma = 8;
+  static int valorActual = 0;
   
+  static int led_encendido=0;
+  static int sensor = 0;
+  static int alarma_activa = 0;
+  static int alarma_armada = 1;
+  static uint32_t alarma_stop_time = 0;
   /*static int contadorBinario = 0;
 
   int binarioLED()
@@ -148,6 +160,12 @@ static void MX_USART2_UART_Init(void);
     {
       estado_ant = 1;
       printf("IZQ Soltado Arriba");
+      sensor++;
+        if(sensor > 1)
+        {
+          sensor = 0;
+        }
+        printf("SENSORR %d\n",sensor);
     }
     if((res == 1) && (estado_ant == 1))
     {
@@ -179,6 +197,38 @@ static void MX_USART2_UART_Init(void);
       return (HAL_ADC_GetValue(&hadc1)+ 10)*8/4095;
   }
 
+  int valorLDR()
+  {
+     ADC_ChannelConfTypeDef sConfig = {0};
+     sConfig.Channel = ADC_CHANNEL_0;
+     sConfig.Rank = 1;
+      sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+      // Disparo la conversion
+      HAL_ADC_Start(&hadc1);
+      // Espero la finalización
+      HAL_ADC_PollForConversion(&hadc1, 10000);
+      printf("SENSOR LUZ: %d\n",(HAL_ADC_GetValue(&hadc1)-200)*8/2300);//valores LUZ MOVIL: 210-250, LUZ NORMAL CLASE: 770-900 TAPANDO DEDO: 1000-1200 TAPANDO CON MANOS: 1700-2000 BAJO MESA: 3000
+      return ((HAL_ADC_GetValue(&hadc1)-200)*8/2300);
+  }
+
+  int valorNTC()
+  {
+    ADC_ChannelConfTypeDef sConfig = {0};
+    sConfig.Channel = ADC_CHANNEL_1;
+    sConfig.Rank = 1;
+    sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+    HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+    
+
+     // Disparo la conversion
+      HAL_ADC_Start(&hadc1);
+      // Espero la finalización
+      HAL_ADC_PollForConversion(&hadc1, 10000);
+      printf("SENSOR TERMICO: %d\n",(HAL_ADC_GetValue(&hadc1)-1500)/67);
+      return (8-(HAL_ADC_GetValue(&hadc1)-1500)/67);
+  }
+
   void encenderLucesPot(int x)
   {
     if (x >= 1) HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
@@ -201,31 +251,36 @@ static void MX_USART2_UART_Init(void);
   }
 
 
+  // Enciende o apaga el LED numero n (1-8) que lo gastamos para nivel potenciometro
+  void set_led_n(int n, int state)
+  {
+    GPIO_PinState ps = state ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    switch(n) {
+      case 1: HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, ps); break;
+      case 2: HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, ps); break;
+      case 3: HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, ps); break;
+      case 4: HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, ps); break;
+      case 5: HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, ps); break;
+      case 6: HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, ps); break;
+      case 7: HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, ps); break;
+      case 8: HAL_GPIO_WritePin(LED8_GPIO_Port, LED8_Pin, ps); break;
+    }
+  }
+
+  // Devuelve 1 en el flanco de bajada del boton (pulsacion detectada)
   int detectar_pulsacionRight(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
   {
-    static int estado_antLeft = 0;
-    GPIO_PinState res_pin = HAL_GPIO_ReadPin(GPIOx,GPIO_Pin);
+    static int estado_ant = 1;  // 1 = no pulsado (pull-up)
+    GPIO_PinState res_pin = HAL_GPIO_ReadPin(GPIOx, GPIO_Pin);
     int res = (res_pin == GPIO_PIN_RESET) ? 0 : 1;
-    //int pulsadoLeft = 0;
-    //printf("DERECHO PULSADO");
-    if((res == 0) && (estado_antLeft == 0))
-    {
-      estado_antLeft = 1;
-      printf("Derecho Soltado Arriba");
-    }
-    if((res == 1) && (estado_antLeft == 1))
-    {
-      pulsadoLeft = 1;
-      estado_antLeft = 0;
-      printf("Derecho Pulsado Abajo");
-      contadorRight++;
-    }
-    if (contadorRight == 2)
-    {
-      contadorRight = 0;
+    if ((res == 0) && (estado_ant == 1)) {  // flanco bajada: boton pulsado
+      estado_ant = 0;
       return 1;
-    }else{
-    return 0;}
+    }
+    if ((res == 1) && (estado_ant == 0)) {  // flanco subida: boton soltado
+      estado_ant = 1;
+    }
+    return 0;
   }
 
 
@@ -264,8 +319,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  static int led_encendido=0;
-  
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -284,43 +338,58 @@ int main(void)
 
   while (1)
   {
-     //fflush((FILE *)0x0);
-     GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
-     void HAL_GPIO_WritePin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, GPIO_PinState PinState);
-     HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
-     //printf("%d",HAL_GPIO_ReadPin(POT_GPIO_Port, POT_Pin));
-      printf("%d\n", valorPOT());
-     // configuración del canal de entrada A/D
-      encenderLucesPot(valorPOT());
-      HAL_Delay(100);
+    valorAlarma = valorPOT();
+    printf("%d",valorAlarma);
+    // Leer sensor seleccionado y mostrar en LEDs
+    if (sensor == 0) {
+      valorActual = valorNTC();
+    } else if (sensor == 1) {
+      valorActual = valorLDR();
+    } else {
+      sensor = 0;
+    }
+    encenderLucesPot(valorActual);
 
-     if(detectar_pulsacionRight(ButtonRight_GPIO_Port, ButtonRight_Pin) == 1)
-        {
+    // LED del nivel de alarma parpadea a ~10 Hz (toggle cada 50ms)
+    if (valorAlarma >= 1 && valorAlarma <= 8) {
+      int led_alarma_estado = (HAL_GetTick() / 50) % 2;
+      set_led_n(valorAlarma, led_alarma_estado);
+    }
 
-          led_encendido = !led_encendido;
-        
-          if(!led_encendido)
-          {
-            HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-            //HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
-            printf("apagando LED");
-          }
-        }
-     //Enciende LED1
-     //HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-     if(detectar_pulsacionLeft(ButtonLeft_GPIO_Port, ButtonLeft_Pin)== 1)
-     {
-        led_encendido = !led_encendido;
-        
-        if(led_encendido)
-        {
-          HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-          //HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-          printf("encendiendo LED");
-        } 
-        
-     }
-     HAL_Delay(100);
+    // Rearme automatico tras 10 segundos
+    if (!alarma_armada && (HAL_GetTick() - alarma_stop_time > 10000)) {
+      alarma_armada = 1;
+      printf("alarma rearmada\n");
+    }
+    // Disparo de alarma si esta armada y se supera el nivel
+    if (alarma_armada && valorActual >= valorAlarma) {
+      alarma_activa = 1;
+    }
+    // Control del buzzer segun estado de alarma
+    if (alarma_activa) {
+      HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+      printf("pitoo\n");
+    } else {
+      HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+    }
+
+    HAL_Delay(50);
+
+    // Boton izquierdo: cambia sensor mostrado
+    detectar_pulsacionLeft(ButtonLeft_GPIO_Port, ButtonLeft_Pin);
+
+    // Boton derecho: para la alarma (si esta activa)
+    if (detectar_pulsacionRight(ButtonRight_GPIO_Port, ButtonRight_Pin) == 1) {
+      if (alarma_activa) {
+        alarma_activa = 0;
+        alarma_armada = 0;
+        alarma_stop_time = HAL_GetTick();
+        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+        printf("alarma parada por boton, rearmando en 10s\n");
+      }
+    }
+
+    HAL_Delay(50);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
