@@ -199,8 +199,8 @@ static void MX_USART2_UART_Init(void);
 
   int valorLDR()
   {
-    ADC_ChannelConfTypeDef sConfig = {0};
-     sConfig.Channel = ADC_CHANNEL_1;
+     ADC_ChannelConfTypeDef sConfig = {0};
+     sConfig.Channel = ADC_CHANNEL_0;
      sConfig.Rank = 1;
       sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
       HAL_ADC_ConfigChannel(&hadc1, &sConfig);
@@ -208,28 +208,25 @@ static void MX_USART2_UART_Init(void);
       HAL_ADC_Start(&hadc1);
       // Espero la finalización
       HAL_ADC_PollForConversion(&hadc1, 10000);
-      //printf("SENSOR TERMICO: %d\n",(HAL_ADC_GetValue(&hadc1)-1500)/67);//valores CALIENTE: 1500 temp mano 1800 TEMP NORMAL:2000 0 -2040 / 8 - 1500 540/8
-      
-      return (8-(HAL_ADC_GetValue(&hadc1)-1500)/67);
+      printf("SENSOR LUZ: %d\n",(HAL_ADC_GetValue(&hadc1)-200)*8/2300);//valores LUZ MOVIL: 210-250, LUZ NORMAL CLASE: 770-900 TAPANDO DEDO: 1000-1200 TAPANDO CON MANOS: 1700-2000 BAJO MESA: 3000
+      return ((HAL_ADC_GetValue(&hadc1)-200)*8/2300);
   }
 
   int valorNTC()
   {
     ADC_ChannelConfTypeDef sConfig = {0};
-    sConfig.Channel = ADC_CHANNEL_0;
+    sConfig.Channel = ADC_CHANNEL_1;
     sConfig.Rank = 1;
     sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
     HAL_ADC_ConfigChannel(&hadc1, &sConfig);
-    HAL_ADC_Start(&hadc1);
-    HAL_ADC_PollForConversion(&hadc1, 10000);
-    float valueAD = (float)HAL_ADC_GetValue(&hadc1);
-    // Formula Steinhart-Hart con parametros BETA
-    float tmp = BETA / (logf((-10000.0f * 3.3f / (valueAD * 3.3f / 4095.9f - 3.3f) - 10000.0f) / R25) + BETA / T25) - 273.18f;
-    // Mapear rango 25-30 grados a 0-8 LEDs
-    int leds = (int)((tmp - 25.0f) * 8.0f / 5.0f);
-    if (leds < 0) leds = 0;
-    if (leds > 8) leds = 8;
-    return leds;
+    
+
+     // Disparo la conversion
+      HAL_ADC_Start(&hadc1);
+      // Espero la finalización
+      HAL_ADC_PollForConversion(&hadc1, 10000);
+      printf("SENSOR TERMICO: %d\n",(HAL_ADC_GetValue(&hadc1)-1500)/67);
+      return (8-(HAL_ADC_GetValue(&hadc1)-1500)/67);
   }
 
   void encenderLucesPot(int x)
@@ -254,7 +251,7 @@ static void MX_USART2_UART_Init(void);
   }
 
 
-  // Enciende o apaga el LED numero n (1-8)
+  // Enciende o apaga el LED numero n (1-8) que lo gastamos para nivel potenciometro
   void set_led_n(int n, int state)
   {
     GPIO_PinState ps = state ? GPIO_PIN_SET : GPIO_PIN_RESET;
