@@ -129,7 +129,10 @@ static void MX_USART2_UART_Init(void);
   static int contadorRight = 0;
   static int pulsado = 0;
   static int pulsadoLeft = 0;
+  static int valorAlarma = 8;
+  static int valorActual = 0;
   
+  static int led_encendido=0;
   static int sensor = 0;
   /*static int contadorBinario = 0;
 
@@ -197,8 +200,9 @@ static void MX_USART2_UART_Init(void);
       HAL_ADC_Start(&hadc1);
       // Espero la finalización
       HAL_ADC_PollForConversion(&hadc1, 10000);
-      printf("SENSOR TERMICO: %d\n",HAL_ADC_GetValue(&hadc1));//valores CALIENTE: 1500 TEMP NORMAL:2000
-      return (HAL_ADC_GetValue(&hadc1));
+      //printf("SENSOR TERMICO: %d\n",(HAL_ADC_GetValue(&hadc1)-1500)/67);//valores CALIENTE: 1500 temp mano 1800 TEMP NORMAL:2000 0 -2040 / 8 - 1500 540/8
+      
+      return (8-(HAL_ADC_GetValue(&hadc1)-1500)/67);
   }
 
   int valorNTC()
@@ -212,7 +216,7 @@ static void MX_USART2_UART_Init(void);
       HAL_ADC_Start(&hadc1);
       // Espero la finalización
       HAL_ADC_PollForConversion(&hadc1, 10000);
-      printf("SENSOR LUZ: %d\n",(HAL_ADC_GetValue(&hadc1)-200)*8/2300);//valores LUZ MOVIL: 210-250, LUZ NORMAL CLASE: 770-900 TAPANDO DEDO: 1000-1200 TAPANDO CON MANOS: 1700-2000 BAJO MESA: 3000
+      //printf("SENSOR LUZ: %d\n",(HAL_ADC_GetValue(&hadc1)-200)*8/2300);//valores LUZ MOVIL: 210-250, LUZ NORMAL CLASE: 770-900 TAPANDO DEDO: 1000-1200 TAPANDO CON MANOS: 1700-2000 BAJO MESA: 3000
       return ((HAL_ADC_GetValue(&hadc1)-200)*8/2300);
   }
 
@@ -240,22 +244,28 @@ static void MX_USART2_UART_Init(void);
 
   int detectar_pulsacionRight(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
   {
-    static int estado_antLeft = 0;
+    static int estado_ant = 0;
     GPIO_PinState res_pin = HAL_GPIO_ReadPin(GPIOx,GPIO_Pin);
     int res = (res_pin == GPIO_PIN_RESET) ? 0 : 1;
-    //int pulsadoLeft = 0;
-    //printf("DERECHO PULSADO");
-    if((res == 0) && (estado_antLeft == 0))
+    //int pulsado = 0;
+    if((res == 0) && (estado_ant == 0))
     {
-      estado_antLeft = 1;
-      printf("Derecho Soltado Arriba");
+      estado_ant = 1;
+      printf("IZQ Soltado Arriba");
+      sensor++;
+        if(sensor > 1)
+        {
+          sensor = 0;
+        }
+        printf("SENSORR %d\n",sensor);
     }
-    if((res == 1) && (estado_antLeft == 1))
+    if((res == 1) && (estado_ant == 1))
     {
-      pulsadoLeft = 1;
-      estado_antLeft = 0;
-      printf("Derecho Pulsado Abajo");
-      contadorRight++;
+      pulsado = 1;
+      estado_ant = 0;
+      printf("IZQ Pulsado Abajo");
+      valorAlarma = valorPOT();
+      contadorLeft++;
     }
     if (contadorRight == 2)
     {
@@ -301,8 +311,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  static int led_encendido=0;
-  
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -321,29 +330,38 @@ int main(void)
 
   while (1)
   {
+    printf("%d",valorAlarma);
     if(sensor == 0) 
       {
-        encenderLucesPot(valorNTC());
+        valorActual = valorNTC();
+        encenderLucesPot(valorActual);
       }
     else if(sensor == 1)
     {
-      encenderLucesPot(valorLDR());
+      valorActual = valorLDR();
+      encenderLucesPot(valorActual);
       HAL_Delay(100);
       //valorLDR();
     } else  //por si acaso en algun momento el valor se sale de lo previsto
     {
       sensor = 0;
     }
+    if (valorActual >= valorAlarma) {
+      HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+      printf("pitoo\n");
+    }else {
+      HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+      printf("dejo de pitarrrr\n");
+    }
      //fflush((FILE *)0x0);
      GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
      void HAL_GPIO_WritePin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, GPIO_PinState PinState);
-     HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+     //HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
      //printf("%d",HAL_GPIO_ReadPin(POT_GPIO_Port, POT_Pin));
       //printf("%d\n", valorPOT());
      // configuración del canal de entrada A/D
       //encenderLucesPot(valorPOT());
       HAL_Delay(100);
-
      if(detectar_pulsacionRight(ButtonRight_GPIO_Port, ButtonRight_Pin) == 1)
         {
 
@@ -367,7 +385,6 @@ int main(void)
         {
           HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
           //HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-          printf("encendiendo LED");
         } 
         
      }
